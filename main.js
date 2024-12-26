@@ -50,7 +50,7 @@ function generateToken(role, student_id, lecturer_id) {
 function verifyTokenAndRole(requiredRole) {
     return function (req, res, next) {
         const token = req.headers.authorization && req.headers.authorization.split(' ')[1];
-        //console.log('Extracted Token:', token);
+        console.log('Extracted Token:', token);
 
         jwt.verify(token, 'TestKey', (err, decoded) => {
             if (err) {
