@@ -103,7 +103,8 @@ app.post('/login', async (req, res) => {
                     role: { $eq: "Admin" }
             
                 }).toArray().then((result) => {
-                    res.send(result)
+                    //res.send(result)
+                    console.log(result)
                 })
             } else if (role === "Lecturer") {
                 res.json({ redirect: '/Lecturer', token });
