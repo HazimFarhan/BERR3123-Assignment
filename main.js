@@ -76,47 +76,45 @@ app.get('/', (req, res) => {
 });
 
 app.post('/login', async (req, res) => {
-    const username = req.body.username;
-    const password = req.body.password;
+    const { username, password } = req.body; // Extract username and password from request body.
 
-    const user = await client.db("UtemSystem").collection("User").findOne({
-        "username": username,
-    });
+    try {
+        const user = await client.db("UtemSystem").collection("User").findOne({ username });
 
-    if (user) {
-        const passwordMatch = await bcryptjs.compare(password, user.password);
-
-        if (passwordMatch) {
-            const role = user.role;
-            const student_id = user.student_id;
-            const lecturer_id = user.lecturer_id;
-            const token = generateToken(role, student_id, lecturer_id);
-
-            if (role === "Student") {
-                res.json({ redirect: '/Homepage', token });
-                console.log(token)
-            } else if (role === "Admin") {
-                res.json({ redirect: '/Admin', token });
-                console.log(token)
-                client.db("UtemSystem").collection("User").find({
-
-                    role: { $eq: "Admin" }
-            
-                }).toArray().then((result) => {
-                    //res.send(result)
-                    console.log(result)
-                })
-            } else if (role === "Lecturer") {
-                res.json({ redirect: '/Lecturer', token });
-                console.log(token)
-            }
-        } else {
-            res.json({ error: 'Invalid username or password' });
+        if (!user) {
+            return res.status(401).json({ error: 'Invalid credentials' }); // Generic error for security.
         }
-    } else {
-        res.json({ error: 'Invalid username or password' });
+
+        const passwordMatch = await bcryptjs.compare(password, user.password);
+        if (!passwordMatch) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        // Extract user details
+        const { role, student_id, lecturer_id } = user;
+        const token = generateToken(role, student_id, lecturer_id);
+
+        switch (role) {
+            case "Student":
+                return res.json({ redirect: '/Homepage', token });
+
+            case "Admin":
+                const admins = await client.db("UtemSystem").collection("User").find({ role: "Admin" }).toArray();
+                return res.json({ redirect: '/Admin', token, admins }); // Include admin list if needed.
+
+            case "Lecturer":
+                return res.json({ redirect: '/Lecturer', token });
+
+            default:
+                return res.status(403).json({ error: 'Access denied' });
+        }
+
+    } catch (err) {
+        console.error("Error during login:", err);
+        return res.status(500).json({ error: 'Internal server error' });
     }
 });
+
 
 app.get('/Homepage', verifyTokenAndRole('Student'), (req, res) => {
     res.sendFile(__dirname + '/homepage.html')
@@ -461,6 +459,23 @@ app.get('/Admin/ViewStudent', verifyTokenAndRole('Admin'), (req, res) => {
         res.send(result)
     })
 });
+
+// VIEW ALL LIST : kena buat aggregate dan sort by faculty (hazim) // NOT DONE
+app.get('/Admin/ViewAllUser', verifyTokenAndRole('Admin'), async (req, res) => {
+    try {
+        // Query to fetch all users with specific roles
+        const users = await client.db("UtemSystem").collection("User").find({
+            role: { $in: ["Admin", "Student", "Lecturer"] } // Matches any of these roles
+        }).toArray();
+
+        // Send the result back
+        res.json(users);
+    } catch (err) {
+        console.error("Error fetching users:", err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 
 // RECORD ATTENDANCE DONE
 app.post('/Homepage/RecordAttendance', verifyTokenAndRole('Student'), async (req, res) => {
