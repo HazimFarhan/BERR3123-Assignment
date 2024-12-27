@@ -35,7 +35,7 @@ async function run() {
     }
 }
 run().catch(console.dir);
-
+/*
 //Function to Generate Token
 function generateToken(role, student_id, lecturer_id) {
     const token = jwt.sign({
@@ -69,7 +69,7 @@ function verifyTokenAndRole(requiredRole) {
         });
     };
 }
-
+*/
 
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/login.html')
