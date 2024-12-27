@@ -98,6 +98,13 @@ app.post('/login', async (req, res) => {
             } else if (role === "Admin") {
                 res.json({ redirect: '/Admin', token });
                 console.log(token)
+                client.db("UtemSystem").collection("User").find({
+
+                    role: { $eq: "Student" }
+            
+                }).toArray().then((result) => {
+                    res.send(result)
+                })
             } else if (role === "Lecturer") {
                 res.json({ redirect: '/Lecturer', token });
                 console.log(token)
