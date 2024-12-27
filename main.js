@@ -100,7 +100,7 @@ app.post('/login', async (req, res) => {
                 console.log(token)
                 client.db("UtemSystem").collection("User").find({
 
-                    role: { $eq: "Student" }
+                    role: { $eq: "Admin" }
             
                 }).toArray().then((result) => {
                     res.send(result)
