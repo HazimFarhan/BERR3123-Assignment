@@ -76,8 +76,7 @@ app.get('/', (req, res) => {
 });
 
 const loginAttempts = new Map(); // To track login attempts per user.
-
-
+/// LOGIN PAGE
 app.post('/login', async (req, res) => {
     const { username, password } = req.body; // Extract username and password from request body.
 
@@ -89,7 +88,7 @@ app.post('/login', async (req, res) => {
         }
 
         const currentTime = Date.now();
-        const attempts = loginAttempts.get(username) || { count: 0, lockUntil: null, lockDuration: 15 * 60 * 1000 };
+        const attempts = loginAttempts.get(username) || { count: 0, lockUntil: null, lockDuration: 5 * 60 * 1000 };
 
         if (attempts.lockUntil && currentTime < attempts.lockUntil) {
             const remainingTime = Math.ceil((attempts.lockUntil - currentTime) / 1000);
@@ -101,7 +100,7 @@ app.post('/login', async (req, res) => {
             attempts.count += 1;
 
             if (attempts.count >= 3) {
-                if (attempts.lockUntil && attempts.lockDuration === 15 * 60 * 1000) {
+                if (attempts.lockUntil && attempts.lockDuration === 5 * 60 * 1000) {
                     attempts.lockDuration = 30 * 60 * 1000; // Increase lock duration to 30 minutes.
                 }
                 attempts.lockUntil = currentTime + attempts.lockDuration;
@@ -116,6 +115,11 @@ app.post('/login', async (req, res) => {
 
         // Reset attempts on successful login.
         loginAttempts.delete(username);
+
+        // Check if the user needs to change their password
+        if (user.isFirstLogin) {
+            return res.json({ redirect: '/ChangePassword', message: 'Please change your password before proceeding.' });
+        }
 
         // Extract user details
         const { role, student_id, lecturer_id } = user;
@@ -142,6 +146,46 @@ app.post('/login', async (req, res) => {
     }
 });
 
+/// CHANGE PASSWORD PAGE FOR NEW USER
+app.post('/change-password', async (req, res) => {
+    const { username, currentPassword, newPassword } = req.body;
+
+    try {
+        const user = await client.db("UtemSystem").collection("User").findOne({ username });
+
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        // Verify current password
+        const passwordMatch = await bcryptjs.compare(currentPassword, user.password);
+        if (!passwordMatch) {
+            return res.status(401).json({ error: 'Current password is incorrect' });
+        }
+
+        // Validate new password complexity
+        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+        if (!passwordRegex.test(newPassword)) {
+            return res.status(400).json({ error: 'Password must be at least 8 characters long, include an uppercase letter, a lowercase letter, a number, and a special character.' });
+        }
+
+        // Hash the new password
+        const hashedPassword = await bcryptjs.hash(newPassword, 10);
+
+        // Update password and set isFirstLogin to false
+        await client.db("UtemSystem").collection("User").updateOne(
+            { username },
+            { $set: { password: hashedPassword, isFirstLogin: false } }
+        );
+
+        return res.json({ message: 'Password changed successfully. Please log in again.' });
+    } catch (err) {
+        console.error("Error changing password:", err);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+
 
 
 app.get('/Homepage', verifyTokenAndRole('Student'), (req, res) => {
@@ -160,38 +204,39 @@ app.get('/Admin/RegisterStudent', (req, res) => {
     res.sendFile(__dirname + '/register.html')
 });
 
-//ADD STUDENT
-app.post('/Admin/RegisterStudent', verifyTokenAndRole('Admin'), (req, res) => {
-    client.db("UtemSystem").collection("User").find({
-        "student_id": { $eq: req.body.student_id },
-    }).toArray().then((result) => {
-        console.log(result)
-        if (result.length > 0) {
-            res.status(400).send('ID already exist')
-            res.send(result)
-            return
-        }
-        else {
-            const { username, password, student_id, name, email, role, phone, PA } = req.body;
-            console.log(username, password);
+// ADD STUDENT
+app.post('/Admin/RegisterStudent', verifyTokenAndRole('Admin'), async (req, res) => {
+    try {
+        const { username, password, student_id, name, email, role, phone, PA } = req.body;
 
-            const hash = bcryptjs.hashSync(password, 10);
-            console.log(hash);
-            client.db("UtemSystem").collection("User").insertOne({
-                "username": username,
-                "password": hash,
-                "student_id": student_id,
-                "name": name,
-                "email": email,
-                "role": role,
-                "phone": phone,
-                "PA": PA
-            })
-            res.send('register successfully')
+        // Check if student ID already exists
+        const existingUser = await client.db("UtemSystem").collection("User").findOne({ student_id });
+        if (existingUser) {
+            return res.status(400).send('ID already exists');
         }
-    })
+
+        // Hash password
+        const hash = await bcryptjs.hash(password, 10);
+
+        // Insert new student with isFirstLogin set to true
+        await client.db("UtemSystem").collection("User").insertOne({
+            "username": username,
+            "password": hash,
+            "student_id": student_id,
+            "name": name,
+            "email": email,
+            "role": role,
+            "phone": phone,
+            "PA": PA,
+            "isFirstLogin": true // Ensure first login requires password change
+        });
+
+        res.send('Register successfully');
+    } catch (err) {
+        console.error("Error registering student:", err);
+        res.status(500).send('Internal server error');
+    }
 });
-
 
 //ADD STUDENT test
 app.post('/Admin/Test/RegisterStudent', (req, res) => {
