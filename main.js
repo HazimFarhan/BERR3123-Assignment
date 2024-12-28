@@ -75,6 +75,9 @@ app.get('/', (req, res) => {
     res.sendFile(__dirname + '/login.html')
 });
 
+const loginAttempts = new Map(); // To track login attempts per user.
+
+
 app.post('/login', async (req, res) => {
     const { username, password } = req.body; // Extract username and password from request body.
 
@@ -85,10 +88,34 @@ app.post('/login', async (req, res) => {
             return res.status(401).json({ error: 'Invalid credentials' }); // Generic error for security.
         }
 
+        const currentTime = Date.now();
+        const attempts = loginAttempts.get(username) || { count: 0, lockUntil: null, lockDuration: 15 * 60 * 1000 };
+
+        if (attempts.lockUntil && currentTime < attempts.lockUntil) {
+            const remainingTime = Math.ceil((attempts.lockUntil - currentTime) / 1000);
+            return res.status(403).json({ error: `Too many failed attempts. Try again in ${remainingTime} seconds.` });
+        }
+
         const passwordMatch = await bcryptjs.compare(password, user.password);
         if (!passwordMatch) {
+            attempts.count += 1;
+
+            if (attempts.count >= 3) {
+                if (attempts.lockUntil && attempts.lockDuration === 15 * 60 * 1000) {
+                    attempts.lockDuration = 30 * 60 * 1000; // Increase lock duration to 30 minutes.
+                }
+                attempts.lockUntil = currentTime + attempts.lockDuration;
+                loginAttempts.set(username, attempts);
+                const lockMinutes = attempts.lockDuration / (60 * 1000);
+                return res.status(403).json({ error: `Too many failed attempts. Try again in ${lockMinutes} minutes.` });
+            }
+
+            loginAttempts.set(username, attempts);
             return res.status(401).json({ error: 'Invalid credentials' });
         }
+
+        // Reset attempts on successful login.
+        loginAttempts.delete(username);
 
         // Extract user details
         const { role, student_id, lecturer_id } = user;
@@ -114,6 +141,7 @@ app.post('/login', async (req, res) => {
         return res.status(500).json({ error: 'Internal server error' });
     }
 });
+
 
 
 app.get('/Homepage', verifyTokenAndRole('Student'), (req, res) => {
