@@ -295,7 +295,8 @@ app.post('/Admin/AddLecturer', verifyTokenAndRole('Admin'), (req, res) => {
                 "email": email,
                 "role": role,
                 "phone": phone,
-                "TeachingSubject": TeachingSubject
+                "TeachingSubject": TeachingSubject,
+                "isFirstLogin": true // Ensure first login requires password change
             })
             res.send('register successfully')
         }
